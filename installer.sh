@@ -4,11 +4,11 @@
 ########################################################################
 #                                                                      #
 #            Pterodactyl Installer, Updater, Remover and More          #
-#            Copyright 2022, Malthe K, <me@malthe.cc>                  #
+#            Copyright 2022, Malthe K, <me@malthe.cc> hej              # 
 # https://github.com/guldkage/Pterodactyl-Installer/blob/main/LICENSE  #
 #                                                                      #
 #  This script is not associated with the official Pterodactyl Panel.  #
-#  You may not remove this line                                       #
+#  You may not remove this line                                        #
 #                                                                      #
 ########################################################################
 
@@ -39,6 +39,9 @@ SSLSWTICH=""
 IP=""
 DOMAIN=""
 dist="$(. /etc/os-release && echo "$ID")"
+
+WINGSFQDN=""
+WINGSEMAIL=""
 
 ### OUTPUTS ###
 
@@ -90,26 +93,42 @@ phpmyadminweb(){
         systemctl stop nginx || exit || output "An error occurred. NGINX is not installed." || exit
         certbot certonly --standalone -d $FQDNPHPMYADMIN --staple-ocsp --no-eff-email -m $PHPMYADMINEMAIL --agree-tos || exit || output "An error occurred. Certbot not installed." || exit
         systemctl start nginx || exit || output "An error occurred. NGINX is not installed." || exit
+
+        apt install mariadb-server
+        PHPMYADMIN_USER=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1`
+        mysql -u root -e "CREATE USER 'admin'@'localhost' IDENTIFIED BY '$PHPMYADMIN_USER';" && mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;"
+
         clear
         output ""
         output "* PHPMYADMIN SUCCESSFULLY INSTALLED *"
         output ""
         output "Thank you for using the script. Remember to give it a star."
-        output "You may still need to create a admin account for PHPMYAdmin."
         output "URL: https://$FQDNPHPMYADMIN"
+        output ""
+        output "Details for admin account:"
+        output "Username: admin"
+        output "Password: $PHPMYADMIN_USER"
         fi
     if  [ "$SSLSTATUSPHPMYADMIN" =  "false" ]; then
         rm -rf /etc/nginx/sites-enabled/default || exit || output "An error occurred. NGINX is not installed." || exit
         curl -o /etc/nginx/sites-enabled/phpmyadmin.conf https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/phpmyadmin.conf || exit || output "An error occurred. cURL is not installed." || exit
         sed -i -e "s@<domain>@${FQDNPHPMYADMIN}@g" /etc/nginx/sites-enabled/phpmyadmin.conf || exit || output "An error occurred. NGINX is not installed." || exit
         systemctl restart nginx || exit || output "An error occurred. NGINX is not installed." || exit
+
+        apt install mariadb-server
+        PHPMYADMIN_USER=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1`
+        mysql -u root -e "CREATE USER 'admin'@'localhost' IDENTIFIED BY '$PHPMYADMIN_USER';" && mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;"
+
         clear
         output ""
         output "* PHPMYADMIN SUCCESSFULLY INSTALLED *"
         output ""
         output "Thank you for using the script. Remember to give it a star."
-        output "You may still need to create a admin account for PHPMYAdmin."
         output "URL: http://$FQDNPHPMYADMIN"
+        output ""
+        output "Details for admin account:"
+        output "Username: admin"
+        output "Password: $PHPMYADMIN_USER"
         fi
 }
 
@@ -121,15 +140,14 @@ phpmyadmininstall(){
     output "While the script is doing its work, please do not abort the installation. This can lead to issues on your machine."
     output "Instead, let the script install PHPMyAdmin. Then uninstall it after if you have changed your mind."
     sleep 1s
-    if  [ "$dist" =  "ubuntu" ] || [ "$dist" =  "debian" ]; then
+    if  [ "$dist" =  "ubuntu" ]; then
+        apt install nginx certbot -y
         mkdir /var/www/phpmyadmin && cd /var/www/phpmyadmin || exit || output "An error occurred. Could not create directory." || exit
-        apt install nginx -y
-        apt install certbot -y
         LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
-        apt -y install php8.0 php8.0-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip}
-        wget https://files.phpmyadmin.net/phpMyAdmin/5.1.3/phpMyAdmin-5.1.3-english.tar.gz
-        tar xvzf phpMyAdmin-5.1.3-english.tar.gz
-        mv /var/www/phpmyadmin/phpMyAdmin-5.1.3-english/* /var/www/phpmyadmin
+        apt -y install php8.1 php8.1-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip}
+        wget https://files.phpmyadmin.net/phpMyAdmin/5.2.0/phpMyAdmin-5.2.0-all-languages.tar.gz
+        tar xzf phpMyAdmin-5.2.0-all-languages.tar.gz
+        mv /var/www/phpmyadmin/phpMyAdmin-5.2.0-all-languages/* /var/www/phpmyadmin
         chown -R www-data:www-data *
         mkdir config
         chmod o+rw config
@@ -137,20 +155,22 @@ phpmyadmininstall(){
         chmod o+w config/config.inc.php
         rm -rf /var/www/phpmyadmin/config
         phpmyadminweb
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
+        fi
+    if  [ "$dist" =  "debian" ]; then
+        apt install nginx certbot -y
         mkdir /var/www/phpmyadmin && cd /var/www/phpmyadmin || exit || output "An error occurred. Could not create directory." || exit
-        sudo mkdir /var/www/phpmyadmin && cd /var/www/phpmyadmin || exit || output "An error occurred. Could not create directory." || exit
-        yum install nginx -y
-        yum install certbot -y
-        yum install -y epel-release http://rpms.remirepo.net/enterprise/remi-release-8.rpm
-        yum install -y yum-utils
-        yum-config-manager --disable remi-php54
-        yum-config-manager --enable remi-php80
-        yum update -y
-        yum install -y php php-{common,fpm,cli,json,mysqlnd,mcrypt,gd,mbstring,pdo,zip,bcmath,dom,opcache}
-        wget https://files.phpmyadmin.net/phpMyAdmin/5.1.3/phpMyAdmin-5.1.3-english.tar.gz
-        tar xvzf phpMyAdmin-5.1.3-english.tar.gz
-        mv /var/www/phpmyadmin/phpMyAdmin-5.1.3-english/* /var/www/phpmyadmin
+        echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/sury-php.list
+        curl -fsSL  https://packages.sury.org/php/apt.gpg | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/sury-keyring.gpg
+        apt update -y
+
+        apt-get update
+        apt -y install software-properties-common curl ca-certificates gnupg2 sudo lsb-release
+        apt-add-repository universe
+        apt install -y php8.1 php8.1-{common,cli,gd,mysql,mbstring,bcmath,xml,fpm,curl,zip}
+
+        wget https://files.phpmyadmin.net/phpMyAdmin/5.2.0/phpMyAdmin-5.2.0-all-languages.tar.gz
+        tar xzf phpMyAdmin-5.2.0-all-languages.tar.gz
+        mv /var/www/phpmyadmin/phpMyAdmin-5.2.0-all-languages/* /var/www/phpmyadmin
         chown -R www-data:www-data *
         mkdir config
         chmod o+rw config
@@ -158,7 +178,7 @@ phpmyadmininstall(){
         chmod o+w config/config.inc.php
         rm -rf /var/www/phpmyadmin/config
         phpmyadminweb
-    fi
+        fi
 }
 
 continueanywayphpmyadmin(){
@@ -301,6 +321,8 @@ start(){
     fi
 }
 
+### WINGS ###
+
 startwings(){
     output ""
     output "* AGREEMENT *"
@@ -312,15 +334,79 @@ startwings(){
 
     if [[ "$AGREEWINGS" =~ [Yy] ]]; then
         AGREEWINGS=yes
-        wingsdocker
+        wingsfqdn
     fi
 }
 
-### Wings ###
+wingsfqdn(){
+    output ""
+    output "* FQDN *"
+    output ""
+    output "Would you like to install a SSL certificate for a FQDN?"
+    output "(Y/N):"
+    read -r WINGSFQDN
 
-wingsfiles(){
-    output "Installing Files..."
+    if [[ "$WINGSFQDN" =~ [Yy] ]]; then
+        WINGSFQDN=yes
+        wingsemail
+    fi
+    if [[ "$WINGSFQDN" =~ [Nn] ]]; then
+        WINGSFQDN=no
+        wingsinstall
+    fi
+}
+
+wingsemail(){
+    output ""
+    output "* EMAIL *"
+    output ""
+    warning "Read:"
+    output "To generate your new FQDN certificate for Wings, your email address must be shared with Let's Encrypt."
+    output "They will send you an email when your certificate is about to expire. A certificate lasts 90 days at a time and you can renew your certificates for free and easily, even with this script."
+    output ""
+    output "Therefore, enter your email. If you do not feel like giving your email, then the script can not continue. Press CTRL + C to exit."
+    read -r WINGSEMAIL
+    wingsfqdn-ask
+}
+
+wingsfqdn-ask(){
+    output ""
+    output "* Wings FQDN * "
+    output ""
+    output "Enter FQDN for Wings."
+    output "Make sure that your FQDN is pointed to your IP with an A record. If not the script will not be able to provide the service."
+    read -r FQDNwingsurl
+    [ -z "$FQDNwingsurl" ] && output "FQDN can't be empty."
+    IP=$(dig +short myip.opendns.com @resolver2.opendns.com -4)
+    DOMAIN=$(dig +short ${FQDNwingsurl})
+    if [ "${IP}" != "${DOMAIN}" ]; then
+        output ""
+        output "Your FQDN does not resolve to the IP of current server."
+        output "Please point your servers IP to your FQDN."
+        output ""
+        output "This error can be false positive. The script is continuing in 10 seconds.."
+        sleep 10s
+        apt install certbot
+        systemctl stop nginx
+        certbot certonly --standalone -d $FQDNwingsurl --staple-ocsp --no-eff-email -m $WINGSEMAIL --agree-tos
+        systemctl start nginx
+        wingsinstall
+    else
+        output "Your FQDN is pointed correctly. Continuing."
+        apt install certbot
+        systemctl stop nginx
+        certbot certonly --standalone -d $FQDNwingsurl --staple-ocsp --no-eff-email -m $WINGSEMAIL --agree-tos
+        systemctl start nginx
+        wingsinstall
+    fi
+}
+
+wingsinstall(){
+    output "Installing..."
     if  [ "$dist" =  "ubuntu" ] || [ "$dist" =  "debian" ]; then
+        curl -sSL https://get.docker.com/ | CHANNEL=stable bash
+        systemctl enable --now docker
+
         mkdir -p /etc/pterodactyl || exit || output "An error occurred. Could not create directory." || exit
         apt-get -y install curl tar unzip
         curl -L -o /usr/local/bin/wings "https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_$([[ "$(uname -m)" == "x86_64" ]] && echo "amd64" || echo "arm64")"
@@ -335,39 +421,7 @@ wingsfiles(){
         output "To do this, create the node on your Panel, then press under Configuration,"
         output "press Generate Token, paste it on your server and then type systemctl enable wings --now"
         output ""
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        mkdir -p /etc/pterodactyl
-        yum -y install curl tar unzip
-        curl -L -o /usr/local/bin/wings "https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_$([[ "$(uname -m)" == "x86_64" ]] && echo "amd64" || echo "arm64")"
-        curl -o /etc/systemd/system/wings.service https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/wings.service
-        chmod u+x /usr/local/bin/wings
-        clear
-        output ""
-        output "* WINGS SUCCESSFULLY INSTALLED *"
-        output ""
-        output "Thank you for using the script. Remember to give it a star."
-        output "All you need is to set up Wings."
-        output "To do this, create the node on your Panel, then press under Configuration,"
-        output "press Generate Token, paste it on your server and then type systemctl enable wings --now"
-        output ""
     fi
-}
-
-### Docker ###
-
-wingsdocker(){
-    output ""
-    output "Installing Docker..."
-    if  [ "$dist" =  "ubuntu" ] || [ "$dist" =  "debian" ]; then
-        curl -sSL https://get.docker.com/ | CHANNEL=stable bash
-        systemctl enable --now docker
-        wingsfiles
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-        dnf -y install docker-ce --allowerasing
-        systemctl enable --now docker
-        wingsfiles
-        fi
 }
 
 ### Webserver ###
@@ -480,51 +534,40 @@ required(){
     output "Installing packages..."
     output "This may take a while."
     output ""
-    if  [ "$dist" =  "ubuntu" ] || [ "$dist" =  "debian" ]; then
+    if  [ "$dist" =  "ubuntu" ]; then
         apt-get update
         apt -y install software-properties-common curl apt-transport-https ca-certificates gnupg
         output "Installing dependencies"
         sleep 1s
         LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
-        add-apt-repository -y ppa:chris-lea/redis-server
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor --batch --yes -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        
         curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
         apt update
         apt-add-repository universe
         apt install certbot python3-certbot-nginx -y
         output "Installing PHP, MariaDB and NGINX"
         sleep 1s
-        apt -y install php8.0 php8.0-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip} mariadb-server nginx tar unzip git redis-server
+        apt -y install php8.1 php8.1-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip} mariadb-server nginx tar unzip git redis-server
         database
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        yum install -y policycoreutils policycoreutils-python selinux-policy selinux-policy-targeted libselinux-utils setroubleshoot-server setools setools-console mcstrans
+    elif  [ "$dist" =  "debian" ]; then
+        apt-get update
+        apt -y install software-properties-common curl ca-certificates gnupg2 sudo lsb-release
         output "Installing dependencies"
-        yum update -y
-        yum install -y MariaDB-common MariaDB-server
-        systemctl start mariadb
-        systemctl enable mariadb
-        output "Installing PHP.."
-        yum install -y epel-release http://rpms.remirepo.net/enterprise/remi-release-8.rpm
-        yum install -y yum-utils
-        yum-config-manager --disable remi-php54
-        yum-config-manager --enable remi-php80
-        yum update -y
-        yum install -y php php-{common,fpm,cli,json,mysqlnd,mcrypt,gd,mbstring,pdo,zip,bcmath,dom,opcache}
-        yum install -y zip unzip
-        yum install -y nginx
-        firewall-cmd --add-service=http --permanent
-        firewall-cmd --add-service=https --permanent 
-        firewall-cmd --reload
-        yum install -y --enablerepo=remi redis
-        setsebool -P httpd_can_network_connect 1
-        setsebool -P httpd_execmem 1
-        setsebool -P httpd_unified 1
-        systemctl start redis
-        systemctl enable redis
-        curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-        yum install certbot -y
-        curl -o /etc/php-fpm.d/www-pterodactyl.conf https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/www-pterodactyl.conf
-        systemctl enable php-fpm
-        systemctl start php-fpm
+        sleep 1s
+        echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/sury-php.list
+        curl -fsSL  https://packages.sury.org/php/apt.gpg | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/sury-keyring.gpg
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        apt update -y
+        
+        apt-add-repository universe
+        apt install certbot python3-certbot-nginx -y
+        output "Installing PHP, MariaDB and NGINX"
+        sleep 1s
+        curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bas
+        apt install -y php8.1 php8.1-{common,cli,gd,mysql,mbstring,bcmath,xml,fpm,curl,zip} mariadb-server nginx tar unzip git redis-server
         database
     fi
 }
@@ -814,10 +857,7 @@ http(){
     if  [ "$dist" =  "ubuntu" ] ||  [ "$dist" =  "debian" ]; then
         apt install ufw -Y
         ufw allow 80
-        ufw alllow 443
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        firewall-cmd --add-service=http --permanent
-        firewall-cmd --add-service=https --permanent
+        ufw allow 443
     fi
 }
 
@@ -829,14 +869,9 @@ pterodactylports(){
     if  [ "$dist" =  "ubuntu" ] ||  [ "$dist" =  "debian" ]; then
         apt install ufw -y
         ufw allow 80
-        ufw alllow 443
+        ufw allow 443
         ufw allow 8080
         ufw allow 2022
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        firewall-cmd --add-service=http --permanent
-        firewall-cmd --add-service=https --permanent
-        firewall-cmd --permanent --add-port=8080/tcp
-        firewall-cmd --permanent --add-port=2022/tcp
     fi
 }
 
@@ -848,8 +883,6 @@ mainmysql(){
     if  [ "$dist" =  "ubuntu" ] ||  [ "$dist" =  "debian" ]; then
         apt install ufw -y
         ufw alllow 3306
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        firewall-cmd --add-service=mysql --permanent
     fi
 }
 
@@ -861,16 +894,10 @@ allfirewall(){
     if  [ "$dist" =  "ubuntu" ] ||  [ "$dist" =  "debian" ]; then
         apt install ufw -y
         ufw allow 80
-        ufw alllow 443
+        ufw allow 443
         ufw allow 8080
         ufw allow 2022
-        ufw alllow 3306
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        firewall-cmd --add-service=http --permanent
-        firewall-cmd --add-service=https --permanent
-        firewall-cmd --permanent --add-port=8080/tcp
-        firewall-cmd --permanent --add-port=2022/tcp
-        firewall-cmd --add-service=mysql --permanent
+        ufw allow 3306
     fi
 }
 
@@ -1018,13 +1045,6 @@ oscheck(){
     if  [ "$dist" =  "ubuntu" ] ||  [ "$dist" =  "debian" ]; then
         output "* Your OS, $dist, is fully supported. Continuing.."
         output ""
-        options
-    elif  [ "$dist" =  "fedora" ] ||  [ "$dist" =  "centos" ] || [ "$dist" =  "rhel" ] || [ "$dist" =  "rocky" ] || [ "$dist" = "almalinux" ]; then
-        output "* Your OS, $dist, is not fully supported."
-        output "* Installations may work, but there is no gurrantee."
-        output "* Continuing in 5 seconds. CTRL+C to stop."
-        output ""
-        sleep 5s
         options
     else
         output "* Your OS, $dist, is not supported!"
