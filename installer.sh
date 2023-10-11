@@ -1,11 +1,12 @@
+
 #!/bin/bash
 #!/usr/bin/env bash
 
 ########################################################################
 #                                                                      #
 #            Pterodactyl Installer, Updater, Remover and More          #
-#            Copyright 2022, Malthe K, <me@malthe.cc> hej              # 
-# https://github.com/guldkage/Pterodactyl-Installer/blob/main/LICENSE  #
+#            Copyright 2023, Malthe K, <me@malthe.cc> hej              # 
+#  https://github.com/guldkage/Pterodactyl-Installer/blob/main/LICENSE #
 #                                                                      #
 #  This script is not associated with the official Pterodactyl Panel.  #
 #  You may not remove this line                                        #
@@ -15,6 +16,7 @@
 ### VARIABLES ###
 
 dist="$(. /etc/os-release && echo "$ID")"
+version="$(. /etc/os-release && echo "$VERSION_ID")"
 
 ### OUTPUTS ###
 
@@ -79,6 +81,10 @@ send_summary(){
         echo "    Password: $USERPASSWORD"
         echo ""
     fi
+    if [ "$dist" = "centos" ] && [ "$version" = "7" ]; then
+        echo "    You are running CentOS 7. NGINX will be selected as webserver."
+        echo ""
+    fi
 }
 
 panel(){
@@ -114,11 +120,10 @@ finish(){
     read -r WINGS_ON_PANEL
 
     if [[ "$WINGS_ON_PANEL" =~ [Yy] ]]; then
-
         wings
     fi
     if [[ "$WINGS_ON_PANEL" =~ [Nn] ]]; then
-        exit 1
+        exit 0
     fi
 }
 
@@ -146,17 +151,40 @@ panel_webserver(){
 panel_conf(){
     [ "$SSLSTATUS" == true ] && appurl="https://$FQDN"
     [ "$SSLSTATUS" == false ] && appurl="http://$FQDN"
-    mysql -u root -e "CREATE USER 'pterodactyluser'@'127.0.0.1' IDENTIFIED BY '$DBPASSWORDHOST';" && mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'pterodactyluser'@'127.0.0.1' WITH GRANT OPTION;"
-    mysql -u root -e "CREATE USER 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$DBPASSWORD';" && mysql -u root -e "CREATE DATABASE panel;" &&mysql -u root -e "GRANT ALL PRIVILEGES ON panel.* TO 'pterodactyl'@'127.0.0.1' WITH GRANT OPTION;" && mysql -u root -e "FLUSH PRIVILEGES;"
+    mariadb -u root -e "CREATE USER 'pterodactyluser'@'127.0.0.1' IDENTIFIED BY '$DBPASSWORDHOST';" && mariadb -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'pterodactyluser'@'127.0.0.1' WITH GRANT OPTION;"
+    mariadb -u root -e "CREATE USER 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$DBPASSWORD';" && mariadb -u root -e "CREATE DATABASE panel;" && mariadb -u root -e "GRANT ALL PRIVILEGES ON panel.* TO 'pterodactyl'@'127.0.0.1' WITH GRANT OPTION;" && mariadb -u root -e "FLUSH PRIVILEGES;"
     php artisan p:environment:setup --author="$EMAIL" --url="$appurl" --timezone="CET" --telemetry=false --cache="redis" --session="redis" --queue="redis" --redis-host="localhost" --redis-pass="null" --redis-port="6379" --settings-ui=true
     php artisan p:environment:database --host="127.0.0.1" --port="3306" --database="panel" --username="pterodactyl" --password="$DBPASSWORD"
     php artisan migrate --seed --force
     php artisan p:user:make --email="$EMAIL" --username="$USERNAME" --name-first="$FIRSTNAME" --name-last="$LASTNAME" --password="$USERPASSWORD" --admin=1
     chown -R www-data:www-data /var/www/pterodactyl/*
+    if [ "$dist" = "centos" ]; then
+        chown -R nginx:nginx /var/www/pterodactyl/*
+        sudo systemctl enable --now redis
+        fi
     curl -o /etc/systemd/system/pteroq.service https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/pteroq.service
     (crontab -l ; echo "* * * * * php /var/www/pterodactyl/artisan schedule:run >> /dev/null 2>&1")| crontab -
     sudo systemctl enable --now redis-server
     sudo systemctl enable --now pteroq.service
+
+    if [ "$dist" = "centos" ] && { [ "$version" = "7" ] || [ "$SSLSTATUS" = "true" ]; }; then
+        sudo yum install epel-release -y
+        sudo yum install certbot -y
+        curl -o /etc/nginx/conf.d/pterodactyl.conf https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/pterodactyl-nginx-ssl.conf
+        sed -i -e "s@<domain>@${FQDN}@g" /etc/nginx/conf.d/pterodactyl.conf
+        sed -i -e "s@/run/php/php8.1-fpm.sock@/var/run/php-fpm/pterodactyl.sock@g" /etc/nginx/conf.d/pterodactyl.conf
+        systemctl stop nginx
+        certbot certonly --standalone -d $FQDN --staple-ocsp --no-eff-email -m $EMAIL --agree-tos
+        systemctl start nginx
+        finish
+        fi
+    if [ "$dist" = "centos" ] && { [ "$version" = "7" ] || [ "$SSLSTATUS" = "false" ]; }; then
+        curl -o /etc/nginx/conf.d/pterodactyl.conf https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/pterodactyl-nginx.conf
+        sed -i -e "s@<domain>@${FQDN}@g" /etc/nginx/conf.d/pterodactyl.conf
+        sed -i -e "s@/run/php/php8.1-fpm.sock@/var/run/php-fpm/pterodactyl.sock@g" /etc/nginx/conf.d/pterodactyl.conf
+        systemctl restart nginx
+        finish
+        fi
     if [ "$SSLSTATUS" = "true" ] && [ "$WEBSERVER" = "NGINX" ]; then
         rm -rf /etc/nginx/sites-enabled/default
         curl -o /etc/nginx/sites-enabled/pterodactyl.conf https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/pterodactyl-nginx-ssl.conf
@@ -199,8 +227,8 @@ panel_conf(){
 
 panel_install(){
     echo "" 
-    if  [ "$dist" =  "ubuntu" ]; then
-        apt-get update
+    if  [ "$dist" =  "ubuntu" ] && [ "$version" = "20.04" ]; then
+        apt update
         apt -y install software-properties-common curl apt-transport-https ca-certificates gnupg
         LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
         curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor --batch --yes -o /usr/share/keyrings/redis-archive-keyring.gpg
@@ -208,44 +236,64 @@ panel_install(){
         curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
         apt update
         sudo add-apt-repository "deb http://archive.ubuntu.com/ubuntu $(lsb_release -sc) universe"
-        apt install certbot -y
-
-        apt -y install mariadb-server tar unzip git redis-server
-        apt -y install php8.1 php8.1-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip}
-        curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-        mkdir /var
-        mkdir /var/www
-        mkdir /var/www/pterodactyl
-        cd /var/www/pterodactyl
-        curl -Lo panel.tar.gz https://github.com/pterodactyl/panel/releases/latest/download/panel.tar.gz
-        tar -xzvf panel.tar.gz
-        chmod -R 755 storage/* bootstrap/cache/
-        cp .env.example .env
-        command composer install --no-dev --optimize-autoloader --no-interaction
-        php artisan key:generate --force
-
-        if  [ "$WEBSERVER" =  "NGINX" ]; then
-            apt install nginx -y
-            panel_conf
-            fi
-        elif  [ "$WEBSERVER" =  "Apache" ]; then
-            apt install apache2 libapache2-mod-php -y
-            panel_conf
-            fi
-    if  [ "$dist" =  "debian" ]; then
-        apt-get update
+    fi
+    if [ "$dist" = "debian" ] && [ "$version" = "11" ]; then
+        apt update
         apt -y install software-properties-common curl ca-certificates gnupg2 sudo lsb-release
         echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/sury-php.list
         curl -fsSL  https://packages.sury.org/php/apt.gpg | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/sury-keyring.gpg
         curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
         apt update -y
-        apt install certbot -y
+        curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+    fi
+    if [ "$dist" = "debian" ] && [ "$version" = "12" ]; then
+        apt update
+        apt -y install software-properties-common curl ca-certificates gnupg2 sudo lsb-release
+        sudo apt install -y apt-transport-https lsb-release ca-certificates wget
+        wget -O /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg
+        echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/php.list
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+        apt update -y
+        curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+    fi
+    if [ "$dist" = "centos" ] && [ "$version" = "7" ]; then
+        yum update -y
+        yum install -y policycoreutils policycoreutils-python selinux-policy selinux-policy-targeted libselinux-utils setroubleshoot-server setools setools-console mcstrans -y
 
-        curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bas
-        apt install -y mariadb-server tar unzip git redis-server
-        apt -y install php8.1 php8.1-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip}
+        curl -o /etc/yum.repos.d/mariadb.repo https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/mariadb.repo
+
+        yum update -y
+        yum install -y mariadb-server
+        systemctl start mariadb
+        systemctl enable mariadb
+
+        yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+        yum -y install https://rpms.remirepo.net/enterprise/remi-release-7.rpm
+        yum install -y yum-utils
+        yum-config-manager --disable 'remi-php*'
+        yum-config-manager --enable remi-php81
+
+        yum update -y
+        yum install -y php php-{common,fpm,cli,json,mysqlnd,mcrypt,gd,mbstring,pdo,zip,bcmath,dom,opcache}
+
+        yum install -y zip unzip
         curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+        yum install -y nginx
+
+        yum install -y --enablerepo=remi redis
+        systemctl start redis
+        systemctl enable redis
+
+        setsebool -P httpd_can_network_connect 1
+        setsebool -P httpd_execmem 1
+        setsebool -P httpd_unified 1
+
+        curl -o /etc/php-fpm.d/www-pterodactyl.conf https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/www-pterodactyl.conf
+        systemctl enable php-fpm
+        systemctl start php-fpm
+
         pause 0.5s
         mkdir /var
         mkdir /var/www
@@ -255,16 +303,38 @@ panel_install(){
         tar -xzvf panel.tar.gz
         chmod -R 755 storage/* bootstrap/cache/
         cp .env.example .env
-        command composer install --no-dev --optimize-autoloader --no-interaction
+        command composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
         php artisan key:generate --force
-        if  [ "$WEBSERVER" =  "NGINX" ]; then
-            apt install nginx -y
-            panel_conf
-            fi
-        elif  [ "$WEBSERVER" =  "Apache" ]; then
-            sudo apt install apache2 libapache2-mod-php8.1 -y
-            panel_conf
-            fi
+
+        WEBSERVER=NGINX
+        panel_conf
+        fi
+
+    apt update
+    apt install certbot -y
+
+    apt install -y mariadb-server tar unzip git redis-server
+    apt -y install php8.1 php8.1-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip}
+    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    pause 0.5s
+    mkdir /var
+    mkdir /var/www
+    mkdir /var/www/pterodactyl
+    cd /var/www/pterodactyl
+    curl -Lo panel.tar.gz https://github.com/pterodactyl/panel/releases/latest/download/panel.tar.gz
+    tar -xzvf panel.tar.gz
+    chmod -R 755 storage/* bootstrap/cache/
+    cp .env.example .env
+    command composer install --no-dev --optimize-autoloader --no-interaction
+    php artisan key:generate --force
+    if  [ "$WEBSERVER" =  "NGINX" ]; then
+        apt install nginx -y
+        panel_conf
+    fi
+    if  [ "$WEBSERVER" =  "Apache" ]; then
+        sudo apt install apache2 libapache2-mod-php8.1 -y
+        panel_conf
+    fi
 }
 
 panel_summary(){
@@ -300,6 +370,7 @@ panel_summary(){
 panel_fqdn(){
     send_summary
     echo "[!] Please enter FQDN. You will access Panel with this."
+    echo "[!] Example: panel.yourdomain.dk."
     read -r FQDN
     [ -z "$FQDN" ] && echo "FQDN can't be empty."
     IP=$(dig +short myip.opendns.com @resolver2.opendns.com -4)
@@ -318,6 +389,7 @@ panel_fqdn(){
 panel_ssl(){
     send_summary
     echo "[!] Do you want to use SSL for your Panel? This is recommended. (Y/N)"
+    echo "[!] SSL is recommended for every panel."
     read -r SSL_CONFIRM
 
     if [[ "$SSL_CONFIRM" =~ [Yy] ]]; then
@@ -344,7 +416,7 @@ panel_email(){
 
 panel_username(){
     send_summary
-    echo "[!] Please enter username for admin account."
+    echo "[!] Please enter username for admin account. You can use your username to login to your Pterodactyl Account."
     read -r USERNAME
     panel_firstname
 }
@@ -364,8 +436,16 @@ panel_lastname(){
 ### Pterodactyl Wings Installation ###
 
 wings(){
+    if [ "$dist" = "debian" ] || [ "$dist" = "ubuntu" ]; then
+        apt install dnsutils certbot -y
+        apt-get -y install curl tar unzip
+        fi
+    if [ "$dist" = "centos" ]; then
+        sudo yum install bind-utils certbot -y
+        yum install -y policycoreutils policycoreutils-python selinux-policy selinux-policy-targeted libselinux-utils setroubleshoot-server setools setools-console mcstrans -y
+        yum install tar unzip zip
+        fi
     clear
-    apt install dnsutils -y
     echo ""
     echo "[!] Before installation, we need some information."
     echo ""
@@ -389,7 +469,7 @@ wings_fqdnask(){
 
 wings_full(){
     if  [ "$WINGS_FQDN_STATUS" =  "true" ]; then
-        systemctl stop nginx
+        systemctl stop nginx apache2
         apt install -y certbot && certbot certonly --standalone -d $WINGS_FQDN --staple-ocsp --no-eff-email --agree-tos
 
         curl -sSL https://get.docker.com/ | CHANNEL=stable bash
@@ -412,7 +492,6 @@ wings_full(){
         systemctl enable --now docker
 
         mkdir -p /etc/pterodactyl || exit || echo "An error occurred. Could not create directory." || exit
-        apt-get -y install curl tar unzip
         curl -L -o /usr/local/bin/wings "https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_$([[ "$(uname -m)" == "x86_64" ]] && echo "amd64" || echo "arm64")"
         curl -o /etc/systemd/system/wings.service https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/configs/wings.service
         chmod u+x /usr/local/bin/wings
@@ -466,6 +545,7 @@ phpmyadmin_finish(){
     echo ""
     echo "    These credentials will has been saved in a file called" 
     echo "    phpmyadmin_credentials.txt in your current directory"
+    echo ""
 }
 
 
@@ -478,9 +558,9 @@ phpmyadminweb(){
         certbot certonly --standalone -d $PHPMYADMIN_FQDN --staple-ocsp --no-eff-email -m $PHPMYADMIN_EMAIL --agree-tos || exit || echo "An error occurred. Certbot not installed." || exit
         systemctl start nginx || exit || echo "An error occurred. NGINX is not installed." || exit
 
-        apt install mariadb-server
+        apt install mariadb-server -y
         PHPMYADMIN_USER=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1`
-        mysql -u root -e "CREATE USER 'admin'@'localhost' IDENTIFIED BY '$PHPMYADMIN_USER';" && mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;"
+        mariadb -u root -e "CREATE USER 'admin'@'localhost' IDENTIFIED BY '$PHPMYADMIN_USER';" && mariadb -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;"
         phpmyadmin_finish
         fi
     if  [ "$PHPMYADMIN_SSLSTATUS" =  "false" ]; then
@@ -489,9 +569,9 @@ phpmyadminweb(){
         sed -i -e "s@<domain>@${PHPMYADMIN_FQDN}@g" /etc/nginx/sites-enabled/phpmyadmin.conf || exit || echo "An error occurred. NGINX is not installed." || exit
         systemctl restart nginx || exit || echo "An error occurred. NGINX is not installed." || exit
 
-        apt install mariadb-server
+        apt install mariadb-server -y
         PHPMYADMIN_USER=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1`
-        mysql -u root -e "CREATE USER '$PHPMYADMIN_USER_LOCAL'@'localhost' IDENTIFIED BY '$PHPMYADMIN_USER';" && mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;"
+        mariadb -u root -e "CREATE USER '$PHPMYADMIN_USER_LOCAL'@'localhost' IDENTIFIED BY '$PHPMYADMIN_USER';" && mariadb -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;"
         phpmyadmin_finish
         fi
 }
@@ -515,47 +595,43 @@ phpmyadmin_fqdn(){
 }
 
 phpmyadmininstall(){
-    if  [ "$dist" =  "ubuntu" ]; then
-        apt install nginx certbot -y
-        mkdir /var/www/phpmyadmin && cd /var/www/phpmyadmin || exit || echo "An error occurred. Could not create directory." || exit
-        cd /var/www/phpmyadmin
-
+    apt update
+    apt install nginx certbot -y
+    mkdir /var/www/phpmyadmin && cd /var/www/phpmyadmin || exit || echo "An error occurred. Could not create directory." || exit
+    cd /var/www/phpmyadmin
+    if  [ "$dist" =  "ubuntu" ] && [ "$version" = "20.04" ]; then
+        apt -y install software-properties-common curl apt-transport-https ca-certificates gnupg
         LC_ALL=C.UTF-8 add-apt-repository -y ppa:ondrej/php
-        apt -y install php8.1 php8.1-{cli,gd,mysql,pdo,mbstring,tokenizer,bcmath,xml,fpm,curl,zip}
-        wget https://files.phpmyadmin.net/phpMyAdmin/5.2.0/phpMyAdmin-5.2.0-all-languages.tar.gz
-        tar xzf phpMyAdmin-5.2.0-all-languages.tar.gz
-        mv /var/www/phpmyadmin/phpMyAdmin-5.2.0-all-languages/* /var/www/phpmyadmin
-        chown -R www-data:www-data *
-        mkdir config
-        chmod o+rw config
-        cp config.sample.inc.php config/config.inc.php
-        chmod o+w config/config.inc.php
-        rm -rf /var/www/phpmyadmin/config
-        phpmyadminweb
-        fi
-    if  [ "$dist" =  "debian" ]; then
-        apt install nginx certbot -y
-        mkdir /var/www/phpmyadmin && cd /var/www/phpmyadmin || exit || echo "An error occurred. Could not create directory." || exit
+        curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+        apt update
+        sudo add-apt-repository "deb http://archive.ubuntu.com/ubuntu $(lsb_release -sc) universe"
+    fi
+    if [ "$dist" = "debian" ] && [ "$version" = "11" ]; then
+        apt -y install software-properties-common curl ca-certificates gnupg2 sudo lsb-release
         echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/sury-php.list
         curl -fsSL  https://packages.sury.org/php/apt.gpg | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/sury-keyring.gpg
         apt update -y
-
-        apt-get update
+        curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+    fi
+    if [ "$dist" = "debian" ] && [ "$version" = "12" ]; then
         apt -y install software-properties-common curl ca-certificates gnupg2 sudo lsb-release
-        apt-add-repository universe
-        apt install -y php8.1 php8.1-{common,cli,gd,mysql,mbstring,bcmath,xml,fpm,curl,zip}
-
-        wget https://files.phpmyadmin.net/phpMyAdmin/5.2.0/phpMyAdmin-5.2.0-all-languages.tar.gz
-        tar xzf phpMyAdmin-5.2.0-all-languages.tar.gz
-        mv /var/www/phpmyadmin/phpMyAdmin-5.2.0-all-languages/* /var/www/phpmyadmin
-        chown -R www-data:www-data *
-        mkdir config
-        chmod o+rw config
-        cp config.sample.inc.php config/config.inc.php
-        chmod o+w config/config.inc.php
-        rm -rf /var/www/phpmyadmin/config
-        phpmyadminweb
-        fi
+        sudo apt install -y apt-transport-https lsb-release ca-certificates wget
+        wget -O /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg
+        echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/php.list
+        apt update -y
+        curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
+    fi
+    
+    wget https://files.phpmyadmin.net/phpMyAdmin/5.2.1/phpMyAdmin-5.2.1-all-languages.tar.gz
+    tar xzf phpMyAdmin-5.2.1-all-languages.tar.gz
+    mv /var/www/phpmyadmin/phpMyAdmin-5.2.1-all-languages/* /var/www/phpmyadmin
+    chown -R www-data:www-data *
+    mkdir config
+    chmod o+rw config
+    cp config.sample.inc.php config/config.inc.php
+    chmod o+w config/config.inc.php
+    rm -rf /var/www/phpmyadmin/config
+    phpmyadminweb
 }
 
 
@@ -583,8 +659,6 @@ phpmyadmin_summary(){
         exit 1
     fi
 }
-
-
 
 send_phpmyadmin_summary(){
     clear
@@ -715,6 +789,7 @@ uninstallpanel_confirm(){
         sudo unlink /etc/nginx/sites-enabled/pterodactyl.conf # Removes nginx config (if using nginx)
         sudo unlink /etc/apache2/sites-enabled/pterodactyl.conf # Removes Apache config (if using apache)
         sudo rm -rf /var/www/pterodactyl # Removing panel files
+        mariadb -u root -e "DROP DATABASE panel;" # Remove panel database
         mysql -u root -e "DROP DATABASE panel;" # Remove panel database
         systemctl restart nginx
         clear
@@ -810,15 +885,14 @@ switchdomains(){
     switchssl
 }
 
-
 ### OS Check ###
 
 oscheck(){
     echo "Checking your OS.."
-    if  [ "$dist" =  "ubuntu" ] ||  [ "$dist" =  "debian" ]; then
+    if { [ "$dist" = "ubuntu" ] && [ "$version" = "18.04" ] || [ "$version" = "20.04" ] || [ "$version" = "22.04" ]; } || { [ "$dist" = "centos" ] && [ "$version" = "7" ]; } || { [ "$dist" = "debian" ] && [ "$version" = "11" ] || [ "$version" = "12" ]; }; then
         options
     else
-        echo "Your OS, $dist, is not supported"
+        echo "Your OS, $dist $version, is not supported"
         exit 1
     fi
 }
@@ -826,37 +900,65 @@ oscheck(){
 ### Options ###
 
 options(){
-    echo "What would you like to do?"
-    echo "[1] Install Panel."
-    echo "[2] Install Wings."
-    echo "[3] Install PHPMyAdmin."
-    echo "[4] Remove Wings"
-    echo "[5] Remove Panel"
-    echo "[6] Switch Pterodactyl Domain"
-    echo "Input 0-6"
-    read -r option
-    case $option in
-        1 ) option=1
-            panel
-            ;;
-        2 ) option=2
-            wings
-            ;;
-        3 ) option=3
-            phpmyadmin
-            ;;
-        4 ) option=6
-            wings_remove
-            ;;
-        5 ) option=7
-            uninstallpanel
-            ;;
-        6 ) option=10
-            switchdomains
-            ;;
-        * ) echo ""
-            echo "Please enter a valid option from 1-6"
-    esac
+    if [ "$dist" = "centos" ] && { [ "$version" = "7" ]; }; then
+        echo "Your opportunities has been limited due to CentOS 7."
+        echo ""
+        echo "What would you like to do?"
+        echo "[1] Install Panel."
+        echo "[2] Install Wings."
+        echo "[3] Remove Panel."
+        echo "[4] Remove Wings."
+        echo "Input 1-4"
+        read -r option
+        case $option in
+            1 ) option=1
+                panel
+                ;;
+            2 ) option=2
+                wings
+                ;;
+            2 ) option=3
+                uninstallpanel
+                ;;
+            2 ) option=4
+                wings_remove
+                ;;
+            * ) echo ""
+                echo "Please enter a valid option from 1-4"
+        esac
+    else
+        echo "What would you like to do?"
+        echo "[1] Install Panel."
+        echo "[2] Install Wings."
+        echo "[3] Install PHPMyAdmin."
+        echo "[4] Remove Wings"
+        echo "[5] Remove Panel"
+        echo "[6] Switch Pterodactyl Domain"
+        echo "Input 1-6"
+        read -r option
+        case $option in
+            1 ) option=1
+                panel
+                ;;
+            2 ) option=2
+                wings
+                ;;
+            3 ) option=3
+                phpmyadmin
+                ;;
+            4 ) option=4
+                wings_remove
+                ;;
+            5 ) option=5
+                uninstallpanel
+                ;;
+            6 ) option=6
+                switchdomains
+                ;;
+            * ) echo ""
+                echo "Please enter a valid option from 1-6"
+        esac
+    fi
 }
 
 ### Start ###
@@ -864,7 +966,7 @@ options(){
 clear
 echo ""
 echo "Pterodactyl Installer @ v2.0"
-echo "Copyright 2022, Malthe K, <me@malthe.cc>"
+echo "Copyright 2023, Malthe K, <me@malthe.cc>"
 echo "https://github.com/guldkage/Pterodactyl-Installer"
 echo ""
 echo "This script is not associated with the official Pterodactyl Panel."

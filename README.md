@@ -1,4 +1,4 @@
-# Pterodactyl Installer
+<h1 align="center"><strong>Pterodactyl Installer</strong></h1>
 
 With this script you can easily install, update or delete Pterodactyl Panel. Everything is gathered in one script.
 Use this script if you want to install, update or delete your services quickly. The things that are being done are already listed on [Pterodactyl](https://pterodactyl.io/), but this clearly makes it faster since it is automatic.
@@ -10,7 +10,7 @@ If you find any errors, things you would like changed or queries for things in t
 Read about [Pterodactyl](https://pterodactyl.io/) here. This script is not associated with the official Pterodactyl Project.
 
 # Features
-This script is one of the only ones that has a well-functioning Switch Domains feature.
+Supports newest version of Pterodactyl! This script is one of the only ones that has a well-functioning Switch Domains feature.
 
 - Install Panel
 - Install Wings
@@ -18,16 +18,19 @@ This script is one of the only ones that has a well-functioning Switch Domains f
 - Switch Pterodactyl Domains
 - Uninstall Panel
 - Uninstall Wings
+- Autoinstall [ONLY NGINX & BETA]
 
 # Supported OS & Webserver
 Supported operating systems.
 
-| Operating System | Version               | Supported                          |
-| ---------------- | ----------------------| ---------------------------------- |
-| Ubuntu           | from 18.04 to 22.04   | :white_check_mark:                 |
-| Debian           | from 10 to 11         | :white_check_mark:                 |
-| CentOS           | no supported versions | :x:                                |
-| Rocky Linux      | no supported versions | :x:                                |
+| Operating System | Version               | Supported                          |   PHP |
+| ---------------- | ----------------------| ---------------------------------- | ----- |
+| Ubuntu           | from 18.04 to 22.04   | :white_check_mark:                 | 8.1   |
+| Debian           | from 10 to 12         | :white_check_mark:                 | 8.1   |
+| CentOS           |       centos 7        | :white_check_mark:                 | 8.1   |
+| Rocky Linux      | no supported versions | :x:                                | :x:   |
+
+:warning: Be aware of using CentOS 7. It is EOL and there will not be added support in this script for any newer CentOS version. If you are running CentOS and you want to use this script, you should switch to a new distro, such as Debian or Ubuntu.
 
 | Webserver        | Supported           |
 | ---------------- | --------------------| 
@@ -38,7 +41,6 @@ Supported operating systems.
 
 # Copyright
 Please do not say you created this script. You may create a fork for this Pterodactyl-Installer, but I would appreciate this github being linked to.
-Also, please not remove my copyright at the top of the Pterodactyl-Installer script.
 
 # Support
 No support is offered for this script.
