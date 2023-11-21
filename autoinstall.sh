@@ -13,6 +13,7 @@
 ########################################################################
 
 dist="$(. /etc/os-release && echo "$ID")"
+version="$(. /etc/os-release && echo "$VERSION_ID")"
 
 
 ### This script is meant to be used: ###
@@ -29,7 +30,7 @@ panel_conf(){
     [ "$SSL" == true ] && appurl="https://$FQDN"
     [ "$SSL" == false ] && appurl="http://$FQDN"
     DBPASSWORD=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1`
-    mysql -u root -e "CREATE USER 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$DBPASSWORD';" && mysql -u root -e "CREATE DATABASE panel;" && mysql -u root -e "GRANT ALL PRIVILEGES ON panel.* TO 'pterodactyl'@'127.0.0.1' WITH GRANT OPTION;" && mysql -u root -e "FLUSH PRIVILEGES;"
+    mariadb -u root -e "CREATE USER 'pterodactyl'@'127.0.0.1' IDENTIFIED BY '$DBPASSWORD';" && mariadb -u root -e "CREATE DATABASE panel;" && mariadb -u root -e "GRANT ALL PRIVILEGES ON panel.* TO 'pterodactyl'@'127.0.0.1' WITH GRANT OPTION;" && mariadb -u root -e "FLUSH PRIVILEGES;"
     php artisan p:environment:setup --author="$EMAIL" --url="$appurl" --timezone="CET" --telemetry=false --cache="redis" --session="redis" --queue="redis" --redis-host="localhost" --redis-pass="null" --redis-port="6379" --settings-ui=true
     php artisan p:environment:database --host="127.0.0.1" --port="3306" --database="panel" --username="pterodactyl" --password="$DBPASSWORD"
     php artisan migrate --seed --force
@@ -85,6 +86,7 @@ panel_install(){
         sudo apt install -y apt-transport-https lsb-release ca-certificates wget
         wget -O /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg
         echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/php.list
+        curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
         apt update -y
         curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash
@@ -118,19 +120,31 @@ LASTNAME=`echo $6`
 PASSWORD=`echo $7`
 WINGS=`echo $8`
 
-echo "Welcome to Autoinstall of Pterodactyl Panel"
-echo "Quick summary before the install begins:"
-echo ""
-echo "FQDN (URL): $FQDN"
-echo "SSL: $SSL"
-echo "Preselected webserver: NGINX"
-echo "Email $EMAIL"
-echo "Username $USERNAME"
-echo "First name $FIRSTNAME"
-echo "Last name $LASTNAME"
-echo "Password: $PASSWORD"
-echo "Wings install: $WINGS"
-echo ""
-echo "Starting automatic installation in 5 seconds"
-sleep 5s
-panel_install
+if [ -z "$FQDN" ] || [ -z "$SSL" ] || [ -z "$EMAIL" ] || [ -z "$USERNAME" ] || [ -z "$FIRSTNAME" ] || [ -z "$LASTNAME" ] || [ -z "$PASSWORD" ] || [ -z "$WINGS" ]; then
+    echo "Error! THe usage of this script is incorrect."
+    exit 1
+fi
+
+echo "Checking your OS.."
+if { [ "$dist" = "ubuntu" ] && [ "$version" = "20.04" ]; } || { [ "$dist" = "debian" ] && [ "$version" = "11" ] || [ "$version" = "12" ]; }; then
+    echo "Welcome to Autoinstall of Pterodactyl Panel"
+    echo "Quick summary before the install begins:"
+    echo ""
+    echo "FQDN (URL): $FQDN"
+    echo "SSL: $SSL"
+    echo "Preselected webserver: NGINX"
+    echo "Email $EMAIL"
+    echo "Username $USERNAME"
+    echo "First name $FIRSTNAME"
+    echo "Last name $LASTNAME"
+    echo "Password: $PASSWORD"
+    echo "Wings install: $WINGS"
+    echo ""
+    echo "Starting automatic installation in 5 seconds"
+    sleep 5s
+    panel_install
+else
+    echo "Your OS, $dist $version, is not supported"
+    exit 1
+fi
+
