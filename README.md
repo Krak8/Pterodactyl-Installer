@@ -8,12 +8,18 @@ The script must be run as root.
 
 Read about [Pterodactyl](https://pterodactyl.io/) here. This script is not associated with the official Pterodactyl Project.
 
+# Docs
+On the docs site, you can find guides as well as FAQ.
+More guides & FAQ answers will be added in the future.
+
+https://pterodactyl-installer.gitbook.io/docs/
+
 # Features
 Supports newest version of Pterodactyl! This script is one of the only ones that has a well-functioning Switch Domains feature.
 
 - Install Panel
 - Install Wings
-- Install Panel & Wings
+- Install Panel & Wings (agree to Wings installation after Install Panel)
 - Install PHPMyAdmin
 - Uninstall PHPMyAdmin
 - Switch Pterodactyl Domains
@@ -21,29 +27,27 @@ Supports newest version of Pterodactyl! This script is one of the only ones that
 - Uninstall Wings
 - Autoinstall [ONLY NGINX & BETA]
 
+# Support
+I have created a channel on my Discord Server where you can get support.
+https://discord.gg/3UUrgEhvJ2
+
 # Supported OS & Webserver
 Supported operating systems.
 
 | Operating System | Version               | Supported                          |   PHP |
 | ---------------- | ----------------------| ---------------------------------- | ----- |
-| Ubuntu           | from 18.04 to 22.04   | :white_check_mark:                 | 8.1   |
-| Debian           | from 11 to 12         | :white_check_mark:                 | 8.1   |
-| CentOS           |       centos 7        | :white_check_mark:                 | 8.1   |
-| Rocky Linux      | no supported versions | :x:                                | :x:   |
-
-:warning: Be aware of using CentOS 7. It is EOL and there will not be added support in this script for any newer CentOS version. If you are running CentOS and you want to use this script, you should switch to a new distro, such as Debian or Ubuntu.
+| Ubuntu           | from 22.04 to 24.04   | :white_check_mark:                 | 8.3   |
+| Debian           | from 11 to 13         | :white_check_mark:                 | 8.3   |
 
 | Webserver        | Supported           |
 | ---------------- | --------------------| 
 | NGINX            | :white_check_mark:  |
 | Apache           | :white_check_mark:  |
-| LiteSpeed        | :x:                 |
-| Caddy            | :x:                 |
 
 # Contributors
-Copyright 2022-2023, [Malthe K](https://github.com/guldkage), me@malthe.cc
+Copyright 2022-2025, [Malthe Kragh](https://github.com/guldkage), me@malthe.cc
 <br>
-Created and maintained by [Malthe K.](https://github.com/guldkage)
+Created and maintained by [Malthe Kragh](https://github.com/guldkage)
 
 # Support
 The script has been tested many times without any bug fixes, however they can still occur.
@@ -87,3 +91,6 @@ It also needs to be run on a fresh version of Ubuntu or Debian.
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/guldkage/Pterodactyl-Installer/main/autoinstall.sh)  <fqdn> <ssl> <email> <username> <firstname <lastname> <password> <wings>
 ```
+
+# Community Scripts (Unofficial)
+You can take a look at community scripts: https://github.com/guldkage/Pterodactyl-Installer/tree/main/community%20scripts
